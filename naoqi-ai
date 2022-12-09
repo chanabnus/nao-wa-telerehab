@@ -1,0 +1,231 @@
+from naoqi import ALProxy
+import time
+import requests
+import json
+import yaml
+
+
+res_tech = "some-replay text"
+res_may = "some-replay text"
+res_which = "some-replay text"
+res_how = "some-replay text"
+res_thankyou = "some-replay text"
+res_sorry = "some-replay text"
+res_apologies = "some-replay text"
+res_intro = "hello nao"
+res_therapy1 = "therapy rehab"
+res_therapy2 = "therapy tai chi"
+res_therapy3 = "therapy dance"
+reply_getstartwith = "Let's get started with "
+reply_compl_exercise = "Thank you, we have completed therapy movement exercise. Would you like to continue or try others?"
+reply_notunderstood = "I'm afraid I don't understand"
+reply_notcatch = "I didn't catch that."
+
+##### WATSON ASSITANT
+apikey = "tdxVIYdRodeTxKyAyljGaUJlTvusdqSRWrP5fhkI087K"
+url = "https://api.eu-gb.assistant.watson.cloud.ibm.com"
+instance_id = "849d4830-11e1-4e84-9366-ee8b43faaf43"
+# assistant_id = "eb61dd98-5130-4520-b97d-da05faee450b"    ## v1
+assistant_id = "9304b552-e6bf-48b1-a42f-c5b2bb0fec45"    ## v2
+env_id = "19c96177-74d8-4440-983d-9ef44a1651b2"
+version = "2022-08-02"
+headers = {
+  'Content-Type': 'application/json',
+  'Authorization': 'Basic YXBpa2V5OnRkeFZJWWRSb2RlVHhLeUF5bGpHYVVKbFR2dXNkcVNSV3JQNWZoa0kwODdL'
+}
+wa_version = "version=" + version
+wa_query = url + "/instances/" + instance_id + "/v2/assistants/" + assistant_id
+wa_session_url = wa_query + "/sessions?" + wa_version
+
+
+class MyClass(GeneratedClass):
+    def __init__(self):
+        GeneratedClass.__init__(self, False)
+        self.logger.info(" \\\\\\\\\\\\\\\ AI __init__ execute")
+        self.tts = ALProxy('ALTextToSpeech')
+        self.ttsStop = ALProxy('ALTextToSpeech', True)  # Create another proxy as wait is blocking if audioout is remote
+
+
+    def onLoad(self):
+        #put initialization code here
+        self.logger.info(" \\\\\\\\\\\\\\\ AI onLoad execute")
+        self.bIsRunning = False
+        self.ids = []
+        ip = '127.0.0.1'
+        port = 9559
+        self.tts = ALProxy('ALTextToSpeech', ip, port)
+        self.bm = ALProxy('ALBehaviorManager', ip, port)
+        self.vd = ALProxy('ALVideoDevice', ip, port)
+        self.touch = ALProxy('ALTouch', ip, port)
+        self.al = ALProxy('ALAutonomousLife', ip, port)
+#        self.robotPoseProxy = ALProxy('ALRobotPose', ip, port)
+        self.bIsRunning = False
+        self.ids = []
+        # self.loop = True
+
+        ### For NAO head to stop turning ###
+        self.ba = ALProxy('ALBasicAwareness', ip, port)
+        self.ba.stopAwareness()
+        ###
+
+        ### Create WA Session id ###
+        self.logger.info(" >>>>> AI WA Session id execute")
+        session_id_query = requests.post(wa_session_url, headers=headers)
+        session_id_raw = yaml.load(json.dumps(session_id_query.json()))
+        self.session_id = session_id_raw['session_id']
+        self.logger.info(session_id_raw)
+
+
+    def onUnload(self):
+        #put clean-up code here
+        self.logger.info(" \\\\\\\\\\\\\\\ AI onUnLoad execute")
+        for id in self.ids:
+            try:
+                self.ttsStop.stop(id)
+            except:
+                pass
+        while (self.bIsRunning):
+            time.sleep(0.2)
+
+
+    def onInput_onStart(self, p):
+        #self.onStopped() #activate the output of the box
+        self.logger.info(" \\\\\\\\\\\\\\\ AI onInput_onStart execute")
+        self.bIsRunning = True
+        try:
+            self.logger.info(" >>>>> AI Human")
+            self.logger.info(p)
+            print " AI Response:"
+            print (p)
+
+            payload = json.dumps({
+              "input": {
+                "text": p[0]
+              }
+            })
+
+            #####  WATSON ASSITANT  #####
+            ### Create Session Id ###
+            # curl -X POST -u "apikey:{apikey}" "{url}/v2/assistants/{assistant_id}/sessions?version={2021-06-14}"
+
+            ### Send User Input ###
+            # curl -X POST -u "apikey:{apikey}" --header "Content-Type:application/json" --data "{\"input\": {\"text\": \"Hello\"}}" "{url}/v2/assistants/{assistant_id}/sessions/{session_id}/message?version={2021-06-14}"
+
+            ##### Waston Assitant Message #####
+            if p[1] > 0.40:
+                self.logger.info(" ========== WATSON ASSITANT ========== ")
+                if len(self.session_id) == 36:
+                    self.logger.info(" >>>>> AI WA Query message execute")
+                    wa_message_url = wa_query + "/sessions/" + self.session_id + "/message?" + wa_version
+                    wa_message_query = requests.post(wa_message_url, headers=headers, data=payload)
+                    wa_message_raw = yaml.load(json.dumps(wa_message_query.json()))
+                    if "output" in wa_message_raw:
+                        wa_response_raw = wa_message_raw['output']['generic']
+#                    self.logger.info(wa_message_raw)
+                    self.logger.info(wa_response_raw)
+
+                wa_reply = ""
+                wa_options_labels = ""
+                wa_options_choice = 0
+
+                for response in wa_response_raw:
+                    if 'text' in response:
+                        if p[0]== "hello nao":
+                            wa_reply += response['text'] + " \\pau=400\\ "
+                        else:
+                            wa_reply = response['text'] + " \\pau=400\\ "
+                            break
+                        # self.logger.info(" >>>>>>>>>> WA response")
+                        # self.logger.info(wa_reply)
+                    elif 'options' in response:
+                        wa_options = response['options']
+                        wa_options_choice = len(wa_options)
+                        for idx in range(wa_options_choice):
+                            wa_options_labels += "\nOption " + str(idx+1) + " " + wa_options[idx]['label'] + " \\pau=400\\ "
+                        # self.logger.info(" >>>>>>>>>> WA options")
+                        # self.logger.info(wa_options_choice)
+                        # self.logger.info(wa_options_labels)
+                    # else:
+                        # self.logger.info("do nothing")
+
+                if p[0]== "hello nao":
+                    wa_reply = wa_reply + ' \\pau=400\\ \nThere are ' + str(wa_options_choice) + ' choices! \\pau=400\\ ' + wa_options_labels
+
+                id = self.tts.post.say(str(wa_reply))
+
+                if (p[0] not in reply_notunderstood or p[0] not in reply_notcatch):
+                    if res_intro in p[0]:
+                        self.logger.info(" >>>>> res_intro")
+                        self.op_intro()
+                        time.sleep(11)
+
+                    elif res_therapy1 in p[0]:
+                        self.logger.info(" >>>>> res_therapy1")
+                        self.tts.post.say(p[0])
+                        # self.tts.post.say(reply_getstartwith + res_therapy1)
+                        self.op_therapy1()
+                        time.sleep(23)
+                        self.tts.post.say(reply_compl_exercise)
+                        time.sleep(5)
+
+                    elif res_therapy2 in p[0]:
+                        self.logger.info(" >>>>> res_therapy2")
+                        self.tts.post.say(p[0])
+                        self.op_therapy2()
+                        time.sleep(50)
+                        self.tts.post.say(reply_compl_exercise)
+                        time.sleep(5)
+
+                    elif res_therapy3 in p[0]:
+                        self.logger.info(" >>>>> res_therapy3")
+                        self.tts.post.say(str(p[0]))
+                        self.op_therapy3()
+                        time.sleep(25)
+                        self.tts.post.say(reply_compl_exercise)
+                        time.sleep(5)
+
+                    elif res_tech in p[0]:
+                        self.op_tech()
+
+                    elif res_may in p[0]:
+                        self.op_may()
+
+                    elif res_which in p[0]:
+                        self.op_which()
+
+                    elif res_how in p[0]:
+                        self.op_how()
+
+                    elif res_thankyou in p[0]:
+                        self.op_thankyou()
+
+                    elif res_sorry in p[0]:
+                        self.op_sorry()
+
+                    elif res_apologies in p[0]:
+                        self.op_apologies()
+
+                    else:
+                        self.op_default()
+
+                self.ids.append(id)
+                self.tts.wait(id, 0)
+
+        finally:
+            try:
+                self.logger.info(" \\\\\\\\\\\\\\\ AI removed id")
+                self.ids.remove(id)
+            except:
+                pass
+            if (self.ids == []):
+                self.onStopped()  # activate output of the box
+                self.bIsRunning = False
+                print " AI output box activated"
+
+
+    def onInput_onStop(self):
+        # self.onUnload() #it is recommended to reuse the clean-up as the box is stopped
+        # self.onStopped() #activate the output of the box
+        self.logger.info(" \\\\\\\\\\\\\\\ AI onInput_onStop execute")
+        self.onUnload()
+        print " AI onInput_onStop"
